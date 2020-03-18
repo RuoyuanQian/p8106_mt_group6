@@ -1,5 +1,5 @@
 ---
-title: "p8106_mtp_rq2166"
+title: "EDA"
 author: "Ruoyuan Qian"
 date: "3/3/2020"
 output: pdf_document
@@ -110,14 +110,69 @@ featurePlot(x, y, plot = "scatter", labels = c("","Y"),
 
 
 
-```{r,fig.height=50,fig.width=40}
+```{r}
+final_house %>% 
+  select(which(numeric_var_index == FALSE)) %>% 
+  pivot_longer(
+   MSZoning : SaleCondition,
+   names_to = "variable",
+   values_to = "category"
+  ) %>% 
+  filter(variable %in% c("MSZoning","LotShape")) %>% 
+  ggplot( mapping = aes(x = category, 
+                      fill = category))+
+  geom_bar() +
+  facet_grid(~variable)
+```
 
+
+```{r}
+  
 variable_name = names(final_house %>% 
   select(which(numeric_var_index == FALSE)))
 
 dataframe = 
   final_house %>% 
   select(which(numeric_var_index == FALSE))
+
+summary = 
+final_house %>% 
+  select(which(numeric_var_index == FALSE)) %>% 
+  pivot_longer(
+   everything(),
+   names_to = "variable",
+   values_to = "category"
+  ) %>% 
+  group_by(variable,category)%>% 
+  count() %>% 
+  mutate(n = freq) %>% 
+  select(-freq)
+  
+
+plotss = NULL
+
+  for(i in 1:length(variable_name)){
+plot_i = 
+  summary %>% 
+  filter(variable == variable_name[i]) %>% 
+  ggplot(mapping = aes(x = category, 
+                       y = n,fill = category)) + 
+   geom_bar(stat = 'identity',position = 'dodge') +
+ scale_fill_hue(c = 80)+
+ ggtitle(paste("Figure", i+2 ,"Distribution of",variable_name[i]))+
+  labs(x = variable_name[i]) +
+ theme(plot.title = element_text(hjust = 0.5),
+       legend.position="right")
+    #plots = paste(plots,plot_tem,"+")
+#paste("plot",i) <- plot_i
+#plotss = c(plotss,print(plot_i))
+
+  }
+
+```
+
+```{r,fig.height=50,fig.width=40}
+
 plots = function(dataframe){
 variable_name = names(dataframe)
 
@@ -156,7 +211,7 @@ for(i in 1: length(dataframe)){
   plot_name = c(plot_name,plot_name_tem)
 }
 
-#as.factor(plot_name)
+as.factor(plot_name)
 
 multiplot( 
  plots(dataframe %>% select( 1 )) , 
