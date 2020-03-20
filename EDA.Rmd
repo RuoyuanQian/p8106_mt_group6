@@ -1,7 +1,6 @@
 ---
 title: "p8106_mtp_rq2166"
 author: "Ruoyuan Qian"
-date: "3/3/2020"
 output: pdf_document
 ---
 
@@ -12,6 +11,8 @@ library(caret)
 library(ggplot2)
 devtools::install_github("thomasp85/patchwork")
 library(Rmisc)
+library(corrplot)
+library(FNN)
 ```
 
 Data cleaning
@@ -65,21 +66,6 @@ ggplot(final_house, aes(x = SalePrice, ..density..)) +
   theme(plot.title = element_text(hjust = 0.5))
 
 density_sale
-```
-
-The response `log(SalePrice)` is bell-shaped
-```{r,fig.height=4}
-density_log_sale = 
-final_house %>% 
-  mutate(log_SalePrice = log(SalePrice)) %>% 
-  ggplot(aes(x = log_SalePrice, ..density..)) +
-  geom_histogram(binwidth = 0.05) +
-  geom_line(stat = 'density',size = 0.7,color = "blue")+
-  ggtitle("Figure 2 Density of log(SalePrice)") +
-  #ylab("Houses") +
-  xlab("log(SalePrice)") + 
-  theme(plot.title = element_text(hjust = 0.5))
-density_log_sale
 ```
 
 
@@ -189,6 +175,177 @@ plots(dataframe %>% select( 26 )) ,
 
 ```
 
+heat map
+```{r,fig.height=15,fig.width=15}
+M<-cor(final_house[,which(numeric_var_index == TRUE)])
+
+#corrplot(M,title = "Correlation Plot", method = "square", addgrid.col = "darkgray", order="hclust", mar = c(4,0,4,0), addrect = 5, rect.col = "black", rect.lwd = 5,cl.pos = "b", tl.col = "indianred4", tl.cex = 1.5, cl.cex = 1.5,addCoef.col = "black", number.digits = 2, number.cex = 0.75)
+
+corrplot(M,title = "Correlation Plot", method = "square", addgrid.col = "darkgray", order="hclust", mar = c(4,0,4,0), addrect = 5, rect.col = "black", rect.lwd = 5,cl.pos = "b", tl.col = "indianred4", tl.cex = 1.5, cl.cex = 1.5)
+
+```
 
 
+```{r}
 
+reg_data = as.data.frame(map(final_house,as.numeric))
+
+x <- model.matrix(SalePrice~.,reg_data)[,-1]
+y <- reg_data$SalePrice
+
+ctrl1 <- trainControl(method = "repeatedcv", number = 10, repeats = 5)
+
+```
+
+
+Multiple linear regression
+
+```{r}
+set.seed(1)
+lm.fit <- train(x, y,
+                method = "lm",
+                trControl = ctrl1,
+                preProcess = c("center", "scale"))
+
+tibble("MSE" = lm.fit $ results $ RMSE)%>% 
+knitr::kable() 
+```
+
+K-nn
+```{r}
+set.seed(1)
+knnFit <- train(x, y,
+                method = "knn", 
+                trControl = ctrl1,
+                preProcess = c("center", "scale"),
+                tuneLength = 20)
+               #  tuneGrid = tibble(n = 7:10))
+
+
+as.data.frame(knnFit$ results ) %>% 
+  select(k,RMSE) %>% 
+  filter(RMSE == min(RMSE)) %>% 
+  knitr::kable() 
+```
+
+LASSO
+```{r}
+set.seed(1)
+lasso.fit <- train(x, y,
+                   method = "glmnet",
+                   tuneGrid = expand.grid(alpha = 1, 
+                                          lambda = exp(seq(5,8, length=200))),
+                   preProc = c("center", "scale"),
+                   trControl = ctrl1)
+
+plot(lasso.fit, xTrans = function(x) log(x))
+
+```
+
+```{r}
+
+coe = coef(lasso.fit$finalModel,lasso.fit$bestTune$lambda)
+
+as.data.frame(lasso.fit$ results ) %>% 
+  select(lambda,RMSE) %>% 
+  filter(RMSE == min(RMSE)) %>% 
+  mutate("Number of non-zero coefficient" = length(which(coe[-1] != 0))) %>% 
+  knitr::kable() 
+
+```
+
+Ridge
+```{r}
+set.seed(1)
+ridge.fit <- train(x, y,
+                   method = "glmnet",
+                   tuneGrid = expand.grid(alpha = 0, 
+                                          lambda = exp(seq(9, 12, length=200))),
+                   preProc = c("center", "scale"),
+                   trControl = ctrl1)
+
+
+plot(ridge.fit, xTrans = function(x) log(x))
+```
+
+```{r}
+
+as.data.frame(ridge.fit$ results ) %>% 
+  select(lambda,RMSE) %>% 
+  filter(RMSE == min(RMSE)) %>% 
+  knitr::kable() 
+
+```
+
+Elastic
+```{r}
+set.seed(1)
+enet.fit <- train(x, y,
+                  method = "glmnet",
+                  tuneGrid = 
+                    expand.grid(alpha = seq(0, 1, length = 15), 
+                                lambda = exp(seq(9,11, length = 50))),
+                  preProc = c("center", "scale"),
+                  trControl = ctrl1)
+enet.fit$bestTune
+
+ggplot(enet.fit, highlight = TRUE) +
+  theme(legend.position="bottom")
+```
+```{r}
+as.data.frame(enet.fit$ results ) %>% 
+  select(lambda,RMSE) %>% 
+  filter(RMSE == min(RMSE)) %>% 
+  knitr::kable() 
+```
+
+
+PCA
+```{r}
+set.seed(1)
+
+pcr.fit <- train(x, y,
+                  method = "pcr",
+                  tuneGrid = data.frame(ncomp = 1:54),
+                  trControl = ctrl1,
+                  scale = TRUE)
+
+as.data.frame(pcr.fit$ results ) %>% 
+  select(ncomp,RMSE) %>% 
+  filter(RMSE == min(RMSE)) %>%
+  knitr::kable() 
+
+ggplot(pcr.fit, highlight = TRUE) + theme_bw()
+```
+
+PLS
+```{r}
+set.seed(1)
+
+pls.fit <- train(x, y,
+                  method = "pls",
+                  tuneGrid = data.frame(ncomp = 1:54),
+                  trControl = ctrl1,
+                  scale = TRUE)
+
+as.data.frame(pls.fit$ results ) %>% 
+  select(ncomp,RMSE) %>% 
+  filter(RMSE == min(RMSE)) %>%
+  knitr::kable() 
+
+ggplot(pls.fit, highlight = TRUE) + theme_bw()
+```
+
+```{r}
+resamp <- resamples(list(lm = lm.fit,
+                         lasso = lasso.fit, 
+                         ridge = ridge.fit,
+                         elastic = enet.fit,
+                         pcr = pcr.fit, 
+                         pls = pls.fit))
+summary(resamp)
+
+bwplot(resamp, metric = "RMSE")
+```
+
+So elastic is the best with smallest MSE.
