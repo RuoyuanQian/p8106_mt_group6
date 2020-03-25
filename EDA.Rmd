@@ -9,10 +9,13 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(caret)
 library(ggplot2)
-devtools::install_github("thomasp85/patchwork")
 library(Rmisc)
 library(corrplot)
 library(FNN)
+library(pdp)
+library(earth)
+library(sandwich)
+library(stargazer)
 ```
 
 Data cleaning
@@ -50,6 +53,8 @@ final_house =
   select(-near_0_var,-missing_var,-Id) %>% 
   #select(-Alley,-FireplaceQu,-PoolQC,-Fence,-MiscFeature) %>% 
   drop_na()
+
+
 ```
 
 Visualization
@@ -68,6 +73,22 @@ ggplot(final_house, aes(x = SalePrice, ..density..)) +
 density_sale
 ```
 
+
+The response `SalePrice` is right skewed
+```{r,fig.height=4}
+density_log_sale = 
+  final_house %>% 
+  mutate(log_saleprice = log(SalePrice)) %>% 
+ggplot(aes(x = log_saleprice), ..density..) +
+  geom_histogram() +
+  geom_line(stat = 'density',size = 0.7,color = "blue")+
+  ggtitle("Figure 1 Density of SalePrice") +
+  #ylab("Houses") +
+  xlab("SalePrice") + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+density_log_sale
+```
 
 ```{r,fig.height=15,fig.width=15}
 numeric_var_index = 
@@ -88,10 +109,11 @@ theme1$plot.line$col <- rgb(.8, .1, .1, 1)
 theme1$plot.line$lwd <- 2
 theme1$strip.background$col <- rgb(.0, .2, .6, .2)
 trellis.par.set(theme1)
-featurePlot(x, y, plot = "scatter", labels = c("","Y"),
+scatter_plot = 
+  featurePlot(x, y, plot = "scatter", labels = c("","Y"),
             type = c("p"), layout = c(7, 4))
 
-
+scatter_plot
 ```
 
 
@@ -104,6 +126,9 @@ variable_name = names(final_house %>%
 dataframe = 
   final_house %>% 
   select(which(numeric_var_index == FALSE))
+
+
+
 plots = function(dataframe){
 variable_name = names(dataframe)
 
@@ -144,7 +169,7 @@ for(i in 1: length(dataframe)){
 
 #as.factor(plot_name)
 
-multiplot( 
+bar_plot = multiplot( 
  plots(dataframe %>% select( 1 )) , 
 plots(dataframe %>% select( 2 )) , 
 plots(dataframe %>% select( 3 )) , 
@@ -173,23 +198,24 @@ plots(dataframe %>% select( 25 )) ,
 plots(dataframe %>% select( 26 )) ,
           cols=4) 
 
+bar_plot
 ```
 
 heat map
 ```{r,fig.height=15,fig.width=15}
-M<-cor(final_house[,which(numeric_var_index == TRUE)])
+#M<-cor(final_house[,which(numeric_var_index == TRUE)])
 
 #corrplot(M,title = "Correlation Plot", method = "square", addgrid.col = "darkgray", order="hclust", mar = c(4,0,4,0), addrect = 5, rect.col = "black", rect.lwd = 5,cl.pos = "b", tl.col = "indianred4", tl.cex = 1.5, cl.cex = 1.5,addCoef.col = "black", number.digits = 2, number.cex = 0.75)
 
-corrplot(M,title = "Correlation Plot", method = "square", addgrid.col = "darkgray", order="hclust", mar = c(4,0,4,0), addrect = 5, rect.col = "black", rect.lwd = 5,cl.pos = "b", tl.col = "indianred4", tl.cex = 1.5, cl.cex = 1.5)
+#corrplot(M,title = "Correlation Plot", method = "square", addgrid.col = "darkgray", order="hclust", mar = c(4,0,4,0), addrect = 5, rect.col = "black", rect.lwd = 5,cl.pos = "b", tl.col = "indianred4", tl.cex = 1.5, cl.cex = 1.5)
 
+reg_data = as.data.frame(map(final_house,as.numeric))
+
+corrplot(cor(reg_data %>% select(-SalePrice)),title = "Correlation Plot", method = "square", addgrid.col = "darkgray", order="hclust", mar = c(4,0,4,0), addrect = 6, rect.col = "black", rect.lwd = 5,cl.pos = "b", tl.col = "indianred4", tl.cex = 1.5, cl.cex = 1.5)
 ```
 
 
 ```{r}
-
-reg_data = as.data.frame(map(final_house,as.numeric))
-
 x <- model.matrix(SalePrice~.,reg_data)[,-1]
 y <- reg_data$SalePrice
 
@@ -238,8 +264,8 @@ lasso.fit <- train(x, y,
                    preProc = c("center", "scale"),
                    trControl = ctrl1)
 
-plot(lasso.fit, xTrans = function(x) log(x))
-
+LASSO_plot = plot(lasso.fit, xTrans = function(x) log(x))
+LASSO_plot
 ```
 
 ```{r}
@@ -265,7 +291,8 @@ ridge.fit <- train(x, y,
                    trControl = ctrl1)
 
 
-plot(ridge.fit, xTrans = function(x) log(x))
+ridge_plot = plot(ridge.fit, xTrans = function(x) log(x))
+ridge_plot
 ```
 
 ```{r}
@@ -284,13 +311,14 @@ enet.fit <- train(x, y,
                   method = "glmnet",
                   tuneGrid = 
                     expand.grid(alpha = seq(0, 1, length = 15), 
-                                lambda = exp(seq(9,11, length = 50))),
+                                lambda = exp(seq(9,10.5, length = 50))),
                   preProc = c("center", "scale"),
                   trControl = ctrl1)
 enet.fit$bestTune
 
-ggplot(enet.fit, highlight = TRUE) +
+elastic_plot = ggplot(enet.fit, highlight = TRUE) +
   theme(legend.position="bottom")
+elastic_plot
 ```
 ```{r}
 as.data.frame(enet.fit$ results ) %>% 
@@ -315,7 +343,8 @@ as.data.frame(pcr.fit$ results ) %>%
   filter(RMSE == min(RMSE)) %>%
   knitr::kable() 
 
-ggplot(pcr.fit, highlight = TRUE) + theme_bw()
+pcr_plot = ggplot(pcr.fit, highlight = TRUE) + theme_bw()
+pcr_plot
 ```
 
 PLS
@@ -336,16 +365,130 @@ as.data.frame(pls.fit$ results ) %>%
 ggplot(pls.fit, highlight = TRUE) + theme_bw()
 ```
 
+GAM
+```{r}
+set.seed(1)
+gam.fit <- train(x, y,
+                 method = "gam",
+                 tuneGrid = data.frame(method = "GCV.Cp", select = c(TRUE,FALSE)),
+                 trControl = ctrl1)
+
+summary(gam.fit$finalModel)
+
+
+```
+
+MARS
+```{r}
+mars_grid <- expand.grid(degree = 1:2, 
+                         nprune = 2:56)
+
+set.seed(1)
+mars.fit <- train(x, y,
+                  method = "earth",
+                  tuneGrid = mars_grid,
+                  trControl = ctrl1)
+
+ggplot(mars.fit)
+
+mars.fit$bestTune
+
+summary(mars.fit$finalModel)
+
+mars_table = mars.fit$finalModel$coefficients %>% 
+  as.data.frame()%>%
+  select("Coefficient" = y) %>% 
+  knitr::kable() 
+
+mars_table
+```
+
+```{r fig.height=20,fig.width=15}
+
+plot_mars = function(name){
+  p1 <- partial(mars.fit, pred.var = c(name), grid.resolution = 10) %>% autoplot()
+  p1
+}
+
+cut_name = c("OverallQual","GrLivArea","X2ndFlrSF","YearBuilt","BsmtFinSF1",
+             "LotArea","OverallCond","X1stFlrSF","TotalBsmtSF","SaleCondition")
+
+plot_list = map(cut_name,plot_mars)
+
+mars_plot = multiplot(plotlist = plot_list, cols=2)
+mars_plot
+```
+
 ```{r}
 resamp <- resamples(list(lm = lm.fit,
                          lasso = lasso.fit, 
                          ridge = ridge.fit,
-                         elastic = enet.fit,
                          pcr = pcr.fit, 
-                         pls = pls.fit))
+                         knn = knnFit,
+                         GAM = gam.fit,
+                         MARS = mars.fit))
 summary(resamp)
 
-bwplot(resamp, metric = "RMSE")
+names(resamp)
+
+str(resamp)
+
+table_resample = resamp$values %>% 
+  as.data.frame() %>% 
+  janitor::clean_names() %>% 
+  select(Lm = lm_rmse, LASSO = lasso_rmse, Ridge = ridge_rmse, 
+         PCR = pcr_rmse, Knn = knn_rmse, GAM = gam_rmse, MARS = mars_rmse
+         ) %>% broom::tidy() %>% 
+  select(-n,-trimmed,-mad,-skew,-kurtosis,-se)%>% 
+  knitr::kable() 
+
+table_resample
+
+resam_plot = compare_box = bwplot(resamp, metric = "RMSE")
+resam_plot
+# resamp%>% broom::tidy() 
 ```
 
-So elastic is the best with smallest MSE.
+So elastic is the best with smallest MSE, lm is has the largest MSE among all.
+
+Important coefficient
+```{r}
+coe = coef(enet.fit$finalModel,enet.fit$bestTune$lambda)
+
+import_coef =   map(final_house %>% head(1) %>% select(-SalePrice) ,as.numeric) %>% 
+    as.data.frame() %>% 
+  pivot_longer(
+    everything(),
+    names_to = "coefficient",
+    values_to = "value"
+  )%>% 
+  mutate(value = coe[-1],
+         rank = rank(-abs(value))) %>% 
+  filter(rank <= 10) %>% 
+  arrange(rank)
+  
+```
+
+$$Y = \beta_0+\beta_1X_1+\beta_2X_2+...+\beta_pX_p+\varepsilon$$
+
+$$RSS=\textstyle\sum_{i=1}^{n}(y_i-\widehat{y_i})$$
+
+$$\widehat{Y} = \widehat{\beta_0}+\widehat{\beta_1}\widehat{X_1}+…++\widehat{\beta_p}\widehat{X_p}$$
+
+$$min(RSS+\lambda\textstyle\sum_{i=1}^{n}\beta^2_j) $$
+
+$$\widehat{\beta^{lasso}}(\gamma)=S(\widehat{\beta},\gamma)=$$
+
+$$min(RSS+\lambda_1\textstyle\sum_{i=1}^{n}\beta^2_j+\lambda_2\textstyle\sum_{i=1}^{n}|\beta_j|) $$
+
+$$Z_m=\textstyle\sum_{j=1}^{p}\phi_{mj}X_{j}$$
+
+$$y_i=\theta_0+\textstyle\sum_{m=1}^{M}\theta_mz_{im}$$
+
+$$\hat{f}(x_0)=Ave(y|x\in N(x_0))=\textstyle\sum_{i=1}^{n}w(x_0,x_i)y_i$$
+
+$$w(x,x_i)=I(x_i\in N_k(x))/K$$
+
+$$g[E(y|X)]=\beta_0+f_1(X_1)+...+f_p(X_p)$$
+
+$${h(x-c),h(c-x)}$$
