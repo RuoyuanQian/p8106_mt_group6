@@ -27,15 +27,15 @@ In the dataset, the response variable is the SalePrice ($) of residential homes 
 
 ## 1.2 Objective
 
-In this report, the focus is among seven methods (multiple linear regression, k-nearest neighbors algorithm (k-NN), ridge regression, lasso regression, elastic regression, principal component regression (PCR), partial least squares regression (PLS)), which one is the best to predict sale price of house for the particular dataset and which predictors are most influential for the response SalePrice.
+In this report, the focus is among eight methods (multiple linear regression, ridge regression, lasso regression, elastic regression, principal component regression (PCR), k-nearest neighbors algorithm (k-NN), generalized additive model (GAM), multivariate adaptive regression spline (MARS)), which one is the best to predict sale price of house for the particular dataset and which predictors are most influential for the response SalePrice.
 
 ## 1.3	Exploratory data analysis (EDA)
 
 ### 1.3.1	Data cleaning
 
-Missing value is checked for each predictor and predictors with the number of missing value greater than 500 are excluded from the dataset. At the meantime, predictors with many zerio or near-zero observations are removed as well.  Finally, NA’s are dropped from the remaining data. When all works are done, there are 55 predictors in total including 28 numeric predictors and 27 categorical predictors. 
+Missing value is checked for each predictor and predictors with the number of missing value greater than 500 are excluded from the dataset. At the meantime, predictors with many zeros or near-zero observations are removed as well.  Finally, NA’s are dropped from the remaining data. When all works are done, there are 55 predictors in total including 28 numeric predictors and 27 categorical predictors. 
 
-## 1.3.2	Visualization
+### 1.3.2	Visualization
 
 The distribution of response SalePrice ($) is checked (Fig. 1), as we can see, it is continuous variable with a right skewed shape. Since all methods in report do not need normal distribution assumption, so the original value of response can be used in model fitting. 
 
@@ -43,31 +43,29 @@ Scatter plots are checked for numeric variables (Fig. 2), bar plots are shown fo
 
 # 2	Methods
 
-The data for all methods is the same to keep the ability of comparison. Data is scaled and standardized in model fitting. There are generally two types of methods: linear methods and non-linear methods.
+The data for all methods is the same to keep the ability of comparison. Data is scaled and standardized in model fitting. All categorical variables are transformed to factor variavles. 
 
 ## 2.1	Linear Methods
 
 ### 2.1.1	Multiple linear regression (MLR)
 
 $$Y = \beta_0+\beta_1X_1+\beta_2X_2+...+\beta_pX_p+\varepsilon$$
-$\beta’s$ are estimated by least square estimation:
+$\beta’s$ are estimated by least squared estimation:
 $$RSS=\textstyle\sum_{i=1}^{n}(y_i-\widehat{y_i})$$,
 where $\widehat{Y} = \widehat{\beta_0}+\widehat{\beta_1}\widehat{X_1}+…+\widehat{\beta_p}\widehat{X_p}$. 
-Although MLR requires a Gaussian error for any inference including prediction interval, the report is focus on the ability of prediction instead of inference, so we don’t have to do transformation for response variable.
+Although MLR requires a Gaussian error for any inference, the report is focus on the ability of prediction, so we don’t have to do transformation for response variable.
 
 ### 2.1.2	Ridge regression
 
 The ridge coefficient estimation is the minimium of the loss function:
 $$min(RSS+\lambda\textstyle\sum_{j=1}^{p}\beta^2_j) $$
 All coefficients will shrink when $\lambda$ increases, but none of them will shrink to zero. So ridge regression will remain all predictors in the final model.
-In R, $\alpha=0$ is fixed, and a range of $\lambda$ is implemented to find the best tuning parameter with the criteria of smallest MSE through cross validation (CV).
 
 ### 2.1.3	LASSO regression
 
 The LASSO coefficient estimation is the minimum of the loss function:
 $$min(RSS+\lambda\textstyle\sum_{j=1}^{p}|\beta_j|) $$
 All coefficients will shrink to zero when $\lambda$ is large enough. LASSO regression will remain a subset of predictors in the final model.
-In R, $\alpha=1$ is fixed, selection of best tuning parameter is similar to ridge.
 
 ### 2.1.4	Elastic regression
 
@@ -76,6 +74,7 @@ $$min(RSS+\lambda_1\textstyle\sum_{i=1}^{n}\beta^2_j+\lambda_2\textstyle\sum_{i=
 All coefficients will not shrink to exact zero when $\lambda$ increases. In R, $\alpha$ can be changed in [0,1], so combinations of a range of $\lambda$ and $\alpha$ is implemented to find the best combination of tuning parameters with the criteria of smallest MSE through cross validation (CV).
 
 ### 2.1.5	Principal component regression (PCR)
+
 It includes two steps, dimension reduction and regression. 
 $$Z_m=\textstyle\sum_{j=1}^{p}\phi_{mj}X_{j}$$
 $$y_i=\theta_0+\textstyle\sum_{m=1}^{M}\theta_mz_{im}$$
@@ -103,17 +102,22 @@ It is a piecewise linear model while the cut points are selected by algorithm, a
 
 For LASSO, plot of MSE across a sequence of $\lambda$ is made (Fig. 5), and the best $\lambda$ is $e^{7.035}$. For ridge model, plot of MSE across a sequence of $\lambda$ (Fig. 6) shows that the best tuning parameter is $\lambda = e^{10.10}$. As for elastic model, 750 combinations of $\alpha$ and $\lambda$ are checked (Fig. 7), the best pair is $\alpha = 0, \lambda = e^{10.10}$, which is the same as ridge, so in the model comparison, only ridge regression will be presented. For PCR, 54 principle components (PC) are tested, and the best number of principle component (PC) is 26 through MSE (Fig. 8). 
 
-For k-NN model, after testing a sequence of k from 5 to 43, the best tuning parameter is equal to 11. For GAM model, “train” function is implemented and 20 out of 54 predictors are tested for non-linear relation to response (Fig. 9). For MARS model, 8 cut points are used to fit the model (Fig. 10).
+For k-NN model, after testing a sequence of k from 5 to 43, the best tuning parameter is equal to 11. For GAM model, “train” function is implemented and 20 out of 54 predictors are tested for non-linear relation to response (Fig. 9). For MARS model, 10 cut points are used to fit the model (Fig. 10).
 
-All models are compared through MSE (Tab. 1). The best model is the one with the smallest MSE, which is MARS. K-nn method obtain the largest MSE among the all.
+All models are compared through MSE (Tab. 1, Fig 11, Fig. 12). The best model is the one with the smallest MSE, which is MARS. K-nn method obtain the largest MSE among the all.
 
 
 ## 3.2	Model interpretation
 
+There are 10 cut points in MARS model, they are in "OverallQual", "GrLivArea", "X2ndFlrSF", "YearBuilt", "BsmtFinSF1", "LotArea", "OverallCond", "X1stFlrSF", "TotalBsmtSF", "SaleCondition". The coefficients of hinge functions are shown in Tab. 2. According to Fig. 10, except “X1stFlrSF” and “SaleCondition”, all predictors have increasing trends when response rises. “X1stFlrSF” has a dereaseing trend all the time when the sale price increases. 
 
+Moreover, the top 10 most important variables for the MARS model are checked in Tab.3, for a decreasing order of contribution, they are: “OverallQual”, “GrLivArea”, “YearBuilt”, “BsmtFinSF1”, “X1stFlrSF”, “X2ndFlrSF”, “OverallCond”, “LotArea”, “TotalBsmtSF”, “SaleCondition”.
 
-# 4	Limitation
+Heat plot for the top 10 the most important variables is made (Fig. 13), “X2ndFlrSF” and “GrLivArea”, “X1stFlrSF” and “TotalBsmtSF”, “YearBuilt” and “OverallQual” are highly correlated, respectively. 
 
+# 4	Discussion
+
+As for data interpretation, since the data from the Kaggle does not include the specific meaning for each variable, so I cannot interpret the model in a more detailed way. Besides, the data contains a lot of integer variables, I treated them as continuous variables, so gaps are introduced in some of the scatter plots. 
 
 \pagebreak
 # Figures and Tables
@@ -131,12 +135,21 @@ resamp$values %>%
 
 ```
 
-## Table 2 Hinge functions and their Coefficients 
+## Table 2 Hinge functions and their coefficients in MARS model
 
 ```{r echo=FALSE, warning=FALSE, message=FALSE}
 mars.fit$finalModel$coefficients %>% 
   as.data.frame()%>%
   select("Coefficient" = y) %>% 
+  knitr::kable() 
+```
+
+## Table 3 Top 10 most important variables in MARS model
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+im_var = varImp(mars.fit) 
+im_var$importance %>% 
+  head(10) %>% 
   knitr::kable() 
 ```
 
@@ -264,3 +277,24 @@ multiplot(plotlist = plot_list, cols=2)
 
 ```
 
+## Figure 11 Box plot of all methods through CV
+
+```{r,echo=FALSE, warning=FALSE, message=FALSE,fig.height=4}
+ bwplot(resamp, metric = "RMSE")
+
+```
+
+## Figure 12 Box plot of all methods through CV
+
+```{r,echo=FALSE, warning=FALSE, message=FALSE,fig.height=4}
+ parallelplot(resamp, metric = "RMSE")
+
+```
+
+
+## Figure 13 Heat map for top 10 most important variables
+
+```{r,echo=FALSE, warning=FALSE, message=FALSE,fig.height=15,fig.width=15}
+
+corrplot(cor(reg_data %>% select(-SalePrice) %>% select(cut_name)),title = "Correlation Plot", method = "square", addgrid.col = "darkgray", order="hclust", mar = c(4,0,4,0), addrect = 5, rect.col = "black", rect.lwd = 5,cl.pos = "b", tl.col = "indianred4", tl.cex = 1.5, cl.cex = 1.5)
+```
