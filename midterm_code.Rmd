@@ -1,0 +1,382 @@
+---
+title: "midterm_code"
+author: "Ruoyuan Qian"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+\pagebreak
+# Appendix - R code
+
+## Data imput
+```{r }
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(caret)
+library(ggplot2)
+library(Rmisc)
+library(corrplot)
+library(FNN)
+library(pdp)
+library(earth)
+library(sandwich)
+library(stargazer)
+
+house = read.csv(file = "train.csv")
+```
+
+## Data cleaning
+```{r }
+house = read.csv(file = "train.csv")
+
+sum_na = function(x){
+  sum = sum(is.na(x))
+  sum}
+
+missing_var = map(house,sum_na) %>% 
+  as.data.frame() %>% 
+  pivot_longer(
+    Id : SalePrice,
+    names_to = "variable",
+    values_to = "value"
+  ) %>% 
+  filter(value > 500 ) %>% 
+  pull(variable) 
+
+near_0_var = 
+  house %>% 
+  nearZeroVar( names = TRUE,freqCut = 80/20)
+
+house %>% 
+  select(near_0_var)
+  
+final_house = 
+  house %>% 
+  select(-near_0_var,-missing_var,-Id) %>% 
+  drop_na()
+
+```
+
+## Visualization
+```{r }
+# Distribution of response
+density_sale = 
+ggplot(final_house, aes(x = SalePrice, ..density..)) +
+  geom_histogram(binwidth = 8000) +
+  geom_line(stat = 'density',size = 0.7,color = "blue")+
+  ggtitle("Figure 1 Density of SalePrice") +
+  xlab("SalePrice") + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+# Scatter plot for continuous variables
+numeric_var_index = 
+ final_house%>% 
+  map(.,is.numeric) %>% 
+  unlist() %>% 
+  as.vector()
+
+x <- model.matrix(SalePrice~.,
+                  final_house[,which(numeric_var_index == TRUE)])[,-1]
+y <- final_house$SalePrice
+
+theme1 <- trellis.par.get()
+theme1$plot.symbol$col <- rgb(.2, .4, .2, .5)
+theme1$plot.symbol$pch <- 16
+theme1$plot.line$col <- rgb(.8, .1, .1, 1)
+theme1$plot.line$lwd <- 2
+theme1$strip.background$col <- rgb(.0, .2, .6, .2)
+trellis.par.set(theme1)
+scatter_plot = 
+  featurePlot(x, y, plot = "scatter", labels = c("","Y"),
+            type = c("p"), layout = c(7, 4))
+
+# Bar plot for categorical variables
+variable_name = names(final_house %>% 
+  select(which(numeric_var_index == FALSE)))
+
+dataframe = 
+  final_house %>% 
+  select(which(numeric_var_index == FALSE))
+
+plots = function(dataframe){
+variable_name = names(dataframe)
+
+summary = 
+final_house %>% 
+  select(which(numeric_var_index == FALSE)) %>% 
+  pivot_longer(
+   everything(),
+   names_to = "variable",
+   values_to = "category"
+  ) %>% 
+  group_by(variable,category)%>% 
+  count() %>% 
+  mutate(n = freq) %>% 
+  select(-freq)
+
+plot_tem = 
+  summary %>% 
+  filter(variable == variable_name) %>% 
+  ggplot(mapping = aes(x = category, 
+                       y = n,fill = category)) + 
+   geom_bar(stat = 'identity',position = 'dodge') +
+ scale_fill_hue(c = 80)+
+ ggtitle(paste("Bar plot of",variable_name))+
+  labs(x = variable_name) +
+ theme(plot.title = element_text(hjust = 0.5),
+       legend.position="right")
+plot_tem
+  }
+
+
+plot_name = NULL
+for(i in 1: length(dataframe)){
+  plot_name_tem = paste("plots(dataframe %>% select(",i,"))",",")
+  plot_name = c(plot_name,plot_name_tem)
+}
+
+
+bar_plot = multiplot( 
+ plots(dataframe %>% select( 1 )) , 
+plots(dataframe %>% select( 2 )) , 
+plots(dataframe %>% select( 3 )) , 
+plots(dataframe %>% select( 4 )) , 
+plots(dataframe %>% select( 5 )) , 
+plots(dataframe %>% select( 6 )) , 
+plots(dataframe %>% select( 7 )) , 
+plots(dataframe %>% select( 8 )) , 
+plots(dataframe %>% select( 9 )) , 
+plots(dataframe %>% select( 10 )) ,
+plots(dataframe %>% select( 11 )) ,
+plots(dataframe %>% select( 12 )) ,
+plots(dataframe %>% select( 13 )) ,
+plots(dataframe %>% select( 14 )) ,
+plots(dataframe %>% select( 15 )) ,
+plots(dataframe %>% select( 16 )) ,
+          cols=4) 
+
+# heat plot for all variables
+
+corrplot(cor(final_house[,which(numeric_var_index == TRUE)] %>% select(-SalePrice)),title = "Correlation Plot", method = "square", addgrid.col = "darkgray", order="hclust", mar = c(4,0,4,0), addrect = 6, rect.col = "black", rect.lwd = 5,cl.pos = "b", tl.col = "indianred4", tl.cex = 1.5, cl.cex = 1.5)
+```
+
+## Training models
+
+```{r}
+
+reg_data_fact = cbind(as.data.frame(map( final_house %>% select(which(numeric_var_index == FALSE)), as.factor)),final_house %>% select(which(numeric_var_index == TRUE)))
+
+x <- model.matrix(SalePrice~.,reg_data_fact)[,-1]
+y <- reg_data_fact$SalePrice
+
+near_0_var = 
+  x %>% 
+  nearZeroVar( names = TRUE,freqCut = 80/20)
+
+x = x %>% 
+  as.data.frame%>% 
+  select(-near_0_var) %>% 
+  as.matrix()
+
+ctrl1 <- trainControl(method = "repeatedcv", number = 10, repeats = 5)
+```
+
+
+Multiple linear regression
+
+```{r }
+set.seed(1)
+lm.fit <- train(x, y,
+                method = "lm",
+                trControl = ctrl1,
+                preProcess = c("center", "scale"))
+
+tibble("MSE" = lm.fit $ results $ RMSE)%>% 
+knitr::kable() 
+```
+
+LASSO
+```{r }
+set.seed(1)
+lasso.fit <- train(x, y,
+                   method = "glmnet",
+                   tuneGrid = expand.grid(alpha = 1, 
+                                          lambda = exp(seq(5,8, length=200))),
+                   preProc = c("center", "scale"),
+                   trControl = ctrl1)
+
+LASSO_plot = plot(lasso.fit, xTrans = function(x) log(x))
+
+coe = coef(lasso.fit$finalModel,lasso.fit$bestTune$lambda)
+
+as.data.frame(lasso.fit$ results ) %>% 
+  select(lambda,RMSE) %>% 
+  filter(RMSE == min(RMSE)) %>% 
+  mutate("Number of non-zero coefficient" = length(which(coe[-1] != 0))) %>% 
+  knitr::kable() 
+
+```
+
+Ridge
+```{r }
+set.seed(1)
+ridge.fit <- train(x, y,
+                   method = "glmnet",
+                   tuneGrid = expand.grid(alpha = 0, 
+                                          lambda = exp(seq(8, 11, length=200))),
+                   preProc = c("center", "scale"),
+                   trControl = ctrl1)
+
+
+ridge_plot = plot(ridge.fit, xTrans = function(x) log(x))
+ridge_plot
+
+as.data.frame(ridge.fit$ results ) %>% 
+  select(lambda,RMSE) %>% 
+  filter(RMSE == min(RMSE)) %>% 
+  knitr::kable() 
+
+```
+
+Elastic
+```{r }
+set.seed(1)
+enet.fit <- train(x, y,
+                  method = "glmnet",
+                  tuneGrid = 
+                    expand.grid(alpha = seq(0, 1, length = 15), 
+                                lambda = exp(seq(8,10.5, length = 50))),
+                  preProc = c("center", "scale"),
+                  trControl = ctrl1)
+enet.fit$bestTune
+
+elastic_plot = ggplot(enet.fit, highlight = TRUE) +
+  theme(legend.position="bottom")
+elastic_plot
+
+as.data.frame(enet.fit$ results ) %>% 
+  select(lambda,RMSE) %>% 
+  filter(RMSE == min(RMSE)) %>% 
+  knitr::kable() 
+```
+
+
+PCA
+```{r }
+set.seed(1)
+
+pcr.fit <- train(x, y,
+                  method = "pcr",
+                  tuneGrid = data.frame(ncomp = 1:52),
+                  trControl = ctrl1,
+                  scale = TRUE)
+
+as.data.frame(pcr.fit$ results ) %>% 
+  select(ncomp,RMSE) %>% 
+  filter(RMSE == min(RMSE)) %>%
+  knitr::kable() 
+
+pcr_plot = ggplot(pcr.fit, highlight = TRUE) + theme_bw()
+pcr_plot
+```
+
+K-nn
+```{r }
+set.seed(1)
+knnFit <- train(x, y,
+                method = "knn", 
+                trControl = ctrl1,
+                preProcess = c("center", "scale"),
+                tuneLength = 20)
+               #  tuneGrid = tibble(n = 7:10))
+
+
+as.data.frame(knnFit$ results ) %>% 
+  select(k,RMSE) %>% 
+  filter(RMSE == min(RMSE)) %>% 
+  knitr::kable() 
+```
+
+GAM
+```{r }
+set.seed(1)
+gam.fit <- train(x, y,
+                 method = "gam",
+                 tuneGrid = data.frame(method = "GCV.Cp", select = c(TRUE,FALSE)),
+                 trControl = ctrl1)
+
+summary(gam.fit$finalModel)
+
+
+```
+
+MARS
+```{r }
+mars_grid <- expand.grid(degree = 1:2, 
+                         nprune = 2:54)
+
+set.seed(1)
+mars.fit <- train(x, y,
+                  method = "earth",
+                  tuneGrid = mars_grid,
+                  trControl = ctrl1)
+
+ggplot(mars.fit)
+
+summary(mars.fit$finalModel)
+
+mars_table = mars.fit$finalModel$coefficients %>% 
+  as.data.frame()%>%
+  select("Coefficient" = y) %>% 
+  knitr::kable() 
+
+plot_mars = function(name){
+  p1 <- partial(mars.fit, pred.var = c(name), grid.resolution = 10) %>% autoplot()
+  p1
+}
+
+cut_name = c("OverallQual","GrLivArea","X2ndFlrSF","YearBuilt","BsmtFinSF1",
+             "LotArea","OverallCond","X1stFlrSF","TotalBsmtSF","SaleCondition")
+
+plot_list = map(cut_name,plot_mars)
+
+multiplot(plotlist = plot_list, cols=2)
+
+```
+
+Model comparison
+```{r  }
+resamp <- resamples(list(lm = lm.fit,
+                         lasso = lasso.fit, 
+                         ridge = ridge.fit,
+                         pcr = pcr.fit, 
+                         knn = knnFit,
+                         GAM = gam.fit,
+                         MARS = mars.fit))
+summary(resamp)
+
+resamp$values %>% 
+  as.data.frame() %>% 
+  janitor::clean_names() %>% 
+  select(Lm = lm_rmse, LASSO = lasso_rmse, Ridge = ridge_rmse, Elastic = elastic_rmse, PCR = pcr_rmse, Knn = knn_rmse, GAM = gam_rmse, MARS = mars_rmse
+         ) %>% broom::tidy() %>% 
+  select(-n,-trimmed,-mad,-skew,-kurtosis,-se)%>% 
+  knitr::kable() 
+
+bwplot(resamp, metric = "RMSE")
+parallelplot(resamp, metric = "RMSE")
+
+```
+
+## Exploration of final model
+```{r}
+im_var = varImp(mars.fit) 
+im_var$importance %>% 
+  head(10) %>% 
+  knitr::kable() 
+
+corrplot(cor(final_house %>% select(-SalePrice) %>% select(cut_name)),title = "Correlation Plot", method = "square", addgrid.col = "darkgray", order="hclust", mar = c(4,0,4,0), addrect = 5, rect.col = "black", rect.lwd = 5,cl.pos = "b", tl.col = "indianred4", tl.cex = 1.5, cl.cex = 1.5)
+```
