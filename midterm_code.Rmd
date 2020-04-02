@@ -338,8 +338,7 @@ plot_mars = function(name){
   p1
 }
 
-cut_name = c("OverallQual","GrLivArea","X2ndFlrSF","YearBuilt","BsmtFinSF1",
-             "LotArea","OverallCond","X1stFlrSF","TotalBsmtSF","SaleCondition")
+cut_name = c("OverallQual", "GrLivArea", "YearBuilt", "X1stFlrSF", "BsmtFinSF1", "X2ndFlrSF", "OverallCond", "LotArea", "TotalBsmtSF", "BedroomAbvGr")
 
 plot_list = map(cut_name,plot_mars)
 
@@ -352,6 +351,7 @@ Model comparison
 resamp <- resamples(list(lm = lm.fit,
                          lasso = lasso.fit, 
                          ridge = ridge.fit,
+                         elastic = enet.fit,
                          pcr = pcr.fit, 
                          knn = knnFit,
                          GAM = gam.fit,
